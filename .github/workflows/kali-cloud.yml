@@ -1,7 +1,7 @@
 name: 🛡️ CYNET Cloud Kali Linux
 
 on:
-  workflow_dispatch: # اجرای دستی با یک کلیک
+  workflow_dispatch: # اجرای دستی با ۱ کلیک
 
 jobs:
   launch-kali:
@@ -9,41 +9,37 @@ jobs:
     timeout-minutes: 360 # حداکثر ۶ ساعت اجرای مداوم
 
     steps:
-      - name: 🚀 Optimize System & Install Tunnel
+      - name: 🚀 Optimize System & Install Cloudflared
         run: |
           echo "=========================================================="
-          echo "  🛡️ CYNET CLOUD KALI LINUX - INITIALIZING ENGINE..."
+          echo "  🛡️ CYNET CLOUD KALI LINUX - STARTING..."
           echo "=========================================================="
-          sudo apt-get update -y
+          sudo apt-get update -y -q
           wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -O /usr/local/bin/cloudflared
           sudo chmod +x /usr/local/bin/cloudflared
 
-      - name: 📦 Launch Kali Linux GUI Desktop Container
+      - name: 📦 Pull & Launch Official Kali Linux Desktop Container
         run: |
-          echo "⚡ Starting Kali Linux Desktop with Full Tools..."
+          echo "⚡ Launching KasmWeb Kali Rolling Desktop with Full GUI..."
           docker run -d \
             --name cynet-kali \
             --privileged \
             --shm-size=2g \
-            -p 3000:3000 \
-            -e PUID=1000 \
-            -e PGID=1000 \
-            -e TZ=Asia/Tehran \
-            -e SUBFOLDER=/ \
-            -e TITLE="CYNET Cloud Kali Linux" \
-            lscr.io/linuxserver/webtop:kali-xfce
+            -p 6901:6901 \
+            -e VNC_PW=cynet123 \
+            kasmweb/kali-rolling-desktop:1.16.0
 
           echo "⏳ Waiting for Kali Desktop to initialize..."
           sleep 15
 
-      - name: 🌐 Expose Kali GUI & Generate Web Link
+      - name: 🌐 Expose Kali GUI to Web Browser
         run: |
           echo "=========================================================="
           echo "  🎉 CONNECTING CLOUD KALI LINUX TO WEB BROWSER..."
           echo "=========================================================="
           
-          # اجرای تانل کلودفلر و استخراج مستقیم لینک وب
-          cloudflared tunnel --url http://localhost:3000 > tunnel.log 2>&1 &
+          # اتصال امن کلودفلر به پورت HTTPS کالی
+          cloudflared tunnel --url https://localhost:6901 --no-tls-verify > tunnel.log 2>&1 &
           
           sleep 5
           for i in {1..20}; do
@@ -51,8 +47,11 @@ jobs:
             if [ -n "$URL" ]; then
               echo ""
               echo "=========================================================="
-              echo "  🔥 YOUR KALI LINUX CLOUD DESKTOP IS READY!"
-              echo "  👉 CLICK HERE TO OPEN: $URL"
+              echo "  🔥 YOUR KALI LINUX CLOUD DESKTOP IS LIVE & READY!"
+              echo "  👉 CLICK TO OPEN: $URL"
+              echo "  --------------------------------------------------------"
+              echo "  🔑 Username: kasm_user"
+              echo "  🔑 Password: cynet123"
               echo "=========================================================="
               echo ""
               break
