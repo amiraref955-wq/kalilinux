@@ -9,14 +9,6 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: 🚀 Connect Tailscale (Optional for SSH)
-        uses: tailscale/github-action@v2
-        with:
-          oauth-client-id: "" # اگر کلید authkey داری در سکرت‌ها استفاده کن
-          oauth-secret: ""
-          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
-        continue-on-error: true
-
       - name: 📦 Setup Kali Linux Engine & Web Terminal (TTYD)
         run: |
           echo "=========================================================="
@@ -41,21 +33,21 @@ jobs:
             kalilinux/kali-rolling \
             tail -f /dev/null
 
-          # آپدیت پکیج‌ها و ابزارهای اصلی در پس‌زمینه
+          # نصب ابزارهای اصلی کالی در پس‌زمینه
           docker exec cynet-kali apt-get update -y
           docker exec cynet-kali apt-get install -y -q nmap metasploit-framework sqlmap hydra curl wget python3 git sudo zsh tmux
 
-      - name: 🌐 Launch Web Terminal & Generate Public Link
+      - name: 🌐 Launch Interactive Web Terminal & Public Link
         run: |
           echo "=========================================================="
-          echo "  🎉 LAUNCHING KALI WEB TERMINAL..."
+          echo "  🎉 LAUNCHING INTERACTIVE KALI WEB TERMINAL..."
           echo "=========================================================="
           
-          # اجرای وب ترمینال روی پورت 7681 با شل کالی
-          ttyd -p 7681 -t fontSize=16 -t theme='{"background": "#0f172a", "foreground": "#38bdf8"}' docker exec -it cynet-kali /bin/bash > /dev/null 2>&1 &
+          # اجرای وب ترمینال با فلگ -W برای فعال‌سازی کامل تایپ و کیبورد
+          ttyd -W -p 7681 -t fontSize=16 -t theme='{"background": "#0f172a", "foreground": "#38bdf8", "cursor": "#38bdf8"}' docker exec -it cynet-kali /bin/bash > /dev/null 2>&1 &
           sleep 3
 
-          # ایجاد تانل کلودفلر برای دسترسی از سراسر جهان
+          # ایجاد تانل کلودفلر
           cloudflared tunnel --url http://localhost:7681 > tunnel.log 2>&1 &
           
           sleep 5
@@ -64,10 +56,10 @@ jobs:
             if [ -n "$URL" ]; then
               echo ""
               echo "=========================================================="
-              echo "  🔥 YOUR CLOUD KALI LINUX IS LIVE & READY!"
+              echo "  🔥 YOUR INTERACTIVE KALI LINUX IS LIVE & READY!"
               echo "  👉 CLICK TO OPEN IN BROWSER: $URL"
               echo "  --------------------------------------------------------"
-              echo "  ⚡ Full Root Access | 1000 Mbps Internet | All Hacking Tools"
+              echo "  ⚡ Full Root Access | 1000 Mbps Internet | Keyboard Active"
               echo "=========================================================="
               echo ""
               break
@@ -75,5 +67,4 @@ jobs:
             sleep 2
           done
 
-          # نمایش لاگ زنده و زنده نگه داشتن سرور
           tail -f tunnel.log
