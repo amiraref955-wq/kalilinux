@@ -1,0 +1,65 @@
+name: 🛡️ CYNET Cloud Kali Linux
+
+on:
+  workflow_dispatch: # اجرای دستی با یک کلیک
+
+jobs:
+  launch-kali:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360 # حداکثر ۶ ساعت اجرای مداوم
+
+    steps:
+      - name: 🚀 Optimize System & Install Tunnel
+        run: |
+          echo "=========================================================="
+          echo "  🛡️ CYNET CLOUD KALI LINUX - INITIALIZING ENGINE..."
+          echo "=========================================================="
+          sudo apt-get update -y
+          wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -O /usr/local/bin/cloudflared
+          sudo chmod +x /usr/local/bin/cloudflared
+
+      - name: 📦 Launch Kali Linux GUI Desktop Container
+        run: |
+          echo "⚡ Starting Kali Linux Desktop with Full Tools..."
+          docker run -d \
+            --name cynet-kali \
+            --privileged \
+            --shm-size=2g \
+            -p 3000:3000 \
+            -e PUID=1000 \
+            -e PGID=1000 \
+            -e TZ=Asia/Tehran \
+            -e SUBFOLDER=/ \
+            -e TITLE="CYNET Cloud Kali Linux" \
+            lscr.io/linuxserver/webtop:kali-xfce
+
+          echo "⏳ Waiting for Kali Desktop to initialize..."
+          sleep 15
+
+      - name: 🌐 Expose Kali GUI & Generate Web Link
+        run: |
+          echo "=========================================================="
+          echo "  🎉 CONNECTING CLOUD KALI LINUX TO WEB BROWSER..."
+          echo "=========================================================="
+          
+          # اجرای تانل کلودفلر و استخراج مستقیم لینک وب
+          cloudflared tunnel --url http://localhost:3000 > tunnel.log 2>&1 &
+          
+          sleep 5
+          for i in {1..20}; do
+            URL=$(grep -o 'https://[a-zA-Z0-9-]*\.trycloudflare\.com' tunnel.log | head -n 1)
+            if [ -n "$URL" ]; then
+              echo ""
+              echo "=========================================================="
+              echo "  🔥 YOUR KALI LINUX CLOUD DESKTOP IS READY!"
+              echo "  👉 CLICK HERE TO OPEN: $URL"
+              echo "=========================================================="
+              echo ""
+              break
+            fi
+            sleep 2
+          done
+
+          # نگه داشتن سرور به صورت زنده
+          echo "🛡️ Kali Linux is running live... Keep this tab open."
+          docker logs -f cynet-kali
