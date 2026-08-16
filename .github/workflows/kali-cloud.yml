@@ -1,45 +1,62 @@
 name: 🛡️ CYNET Cloud Kali Linux
 
 on:
-  workflow_dispatch: # اجرای دستی با ۱ کلیک
+  workflow_dispatch:
 
 jobs:
   launch-kali:
     runs-on: ubuntu-latest
-    timeout-minutes: 360 # حداکثر ۶ ساعت اجرای مداوم
+    timeout-minutes: 360
 
     steps:
-      - name: 🚀 Optimize System & Install Cloudflared
+      - name: 🚀 Connect Tailscale (Optional for SSH)
+        uses: tailscale/github-action@v2
+        with:
+          oauth-client-id: "" # اگر کلید authkey داری در سکرت‌ها استفاده کن
+          oauth-secret: ""
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+        continue-on-error: true
+
+      - name: 📦 Setup Kali Linux Engine & Web Terminal (TTYD)
         run: |
           echo "=========================================================="
-          echo "  🛡️ CYNET CLOUD KALI LINUX - STARTING..."
+          echo "  🛡️ INSTALLING KALI LINUX & HACKING SUITE..."
           echo "=========================================================="
           sudo apt-get update -y -q
+          
+          # نصب کلودفلرد
           wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -O /usr/local/bin/cloudflared
           sudo chmod +x /usr/local/bin/cloudflared
 
-      - name: 📦 Pull & Launch Official Kali Linux Desktop Container
-        run: |
-          echo "⚡ Launching KasmWeb Kali Rolling Desktop with Full GUI..."
+          # نصب وب‌ترمینال قدرتمند ttyd
+          sudo wget -q https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64 -O /usr/local/bin/ttyd
+          sudo chmod +x /usr/local/bin/ttyd
+
+          # اجرای کانتینر رسمی کالی لینوکس با دسترسی روت کامل
           docker run -d \
             --name cynet-kali \
             --privileged \
-            --shm-size=2g \
-            -p 6901:6901 \
-            -e VNC_PW=cynet123 \
-            kasmweb/kali-rolling-desktop:1.16.0
+            --network host \
+            -v /root:/root \
+            kalilinux/kali-rolling \
+            tail -f /dev/null
 
-          echo "⏳ Waiting for Kali Desktop to initialize..."
-          sleep 15
+          # آپدیت پکیج‌ها و ابزارهای اصلی در پس‌زمینه
+          docker exec cynet-kali apt-get update -y
+          docker exec cynet-kali apt-get install -y -q nmap metasploit-framework sqlmap hydra curl wget python3 git sudo zsh tmux
 
-      - name: 🌐 Expose Kali GUI to Web Browser
+      - name: 🌐 Launch Web Terminal & Generate Public Link
         run: |
           echo "=========================================================="
-          echo "  🎉 CONNECTING CLOUD KALI LINUX TO WEB BROWSER..."
+          echo "  🎉 LAUNCHING KALI WEB TERMINAL..."
           echo "=========================================================="
           
-          # اتصال امن کلودفلر به پورت HTTPS کالی
-          cloudflared tunnel --url https://localhost:6901 --no-tls-verify > tunnel.log 2>&1 &
+          # اجرای وب ترمینال روی پورت 7681 با شل کالی
+          ttyd -p 7681 -t fontSize=16 -t theme='{"background": "#0f172a", "foreground": "#38bdf8"}' docker exec -it cynet-kali /bin/bash > /dev/null 2>&1 &
+          sleep 3
+
+          # ایجاد تانل کلودفلر برای دسترسی از سراسر جهان
+          cloudflared tunnel --url http://localhost:7681 > tunnel.log 2>&1 &
           
           sleep 5
           for i in {1..20}; do
@@ -47,11 +64,10 @@ jobs:
             if [ -n "$URL" ]; then
               echo ""
               echo "=========================================================="
-              echo "  🔥 YOUR KALI LINUX CLOUD DESKTOP IS LIVE & READY!"
-              echo "  👉 CLICK TO OPEN: $URL"
+              echo "  🔥 YOUR CLOUD KALI LINUX IS LIVE & READY!"
+              echo "  👉 CLICK TO OPEN IN BROWSER: $URL"
               echo "  --------------------------------------------------------"
-              echo "  🔑 Username: kasm_user"
-              echo "  🔑 Password: cynet123"
+              echo "  ⚡ Full Root Access | 1000 Mbps Internet | All Hacking Tools"
               echo "=========================================================="
               echo ""
               break
@@ -59,6 +75,5 @@ jobs:
             sleep 2
           done
 
-          # نگه داشتن سرور به صورت زنده
-          echo "🛡️ Kali Linux is running live... Keep this tab open."
-          docker logs -f cynet-kali
+          # نمایش لاگ زنده و زنده نگه داشتن سرور
+          tail -f tunnel.log
