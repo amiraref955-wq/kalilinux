@@ -1,70 +1,94 @@
-name: 🛡️ CYNET Cloud Kali Linux
+name: Windows Cloud Desktop (Browser)
 
 on:
   workflow_dispatch:
 
 jobs:
-  launch-kali:
-    runs-on: ubuntu-latest
+  launch-windows:
+    runs-on: windows-latest
     timeout-minutes: 360
 
     steps:
-      - name: 📦 Setup Kali Linux Engine & Web Terminal (TTYD)
+      - name: Setup Windows desktop sharing
+        shell: pwsh
         run: |
-          echo "=========================================================="
-          echo "  🛡️ INSTALLING KALI LINUX & HACKING SUITE..."
-          echo "=========================================================="
-          sudo apt-get update -y -q
-          
-          # نصب کلودفلرد
-          wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -O /usr/local/bin/cloudflared
-          sudo chmod +x /usr/local/bin/cloudflared
+          Write-Host "Installing TightVNC, noVNC and websockify..."
+          choco install tightvnc -y --no-progress
+          git clone --depth 1 https://github.com/novnc/noVNC.git C:\noVNC
+          python -m pip install --upgrade pip
+          python -m pip install websockify
 
-          # نصب وب‌ترمینال قدرتمند ttyd
-          sudo wget -q https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64 -O /usr/local/bin/ttyd
-          sudo chmod +x /usr/local/bin/ttyd
+          # Create a random 8-character VNC password (TightVNC uses 8-byte auth).
+          $chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'
+          $pass = -join (1..8 | ForEach-Object { $chars[(Get-Random -Maximum $chars.Length)] })
+          "VNC_PASSWORD=$pass" | Out-File C:\desktop-credentials.txt -Encoding ascii
 
-          # اجرای کانتینر رسمی کالی لینوکس با دسترسی روت کامل
-          docker run -d \
-            --name cynet-kali \
-            --privileged \
-            --network host \
-            -v /root:/root \
-            kalilinux/kali-rolling \
-            tail -f /dev/null
+          # Encrypt password using the standard VNC DES key and store it in TightVNC registry.
+          $key = [byte[]](23,82,107,6,35,78,88,7)
+          $plain = [System.Text.Encoding]::ASCII.GetBytes($pass.PadRight(8,[char]0).Substring(0,8))
+          $des = [System.Security.Cryptography.DES]::Create()
+          $des.Mode = [System.Security.Cryptography.CipherMode]::ECB
+          $des.Padding = [System.Security.Cryptography.PaddingMode]::None
+          $des.Key = $key
+          $enc = $des.CreateEncryptor().TransformFinalBlock($plain,0,8)
+          New-Item -Path 'HKLM:\SOFTWARE\TightVNC\Server' -Force | Out-Null
+          New-ItemProperty -Path 'HKLM:\SOFTWARE\TightVNC\Server' -Name Password -PropertyType Binary -Value $enc -Force | Out-Null
+          New-ItemProperty -Path 'HKLM:\SOFTWARE\TightVNC\Server' -Name PasswordViewOnly -PropertyType Binary -Value $enc -Force | Out-Null
+          New-ItemProperty -Path 'HKLM:\SOFTWARE\TightVNC\Server' -Name UseVncAuthentication -PropertyType DWord -Value 1 -Force | Out-Null
+          New-ItemProperty -Path 'HKLM:\SOFTWARE\TightVNC\Server' -Name LoopbackOnly -PropertyType DWord -Value 0 -Force | Out-Null
+          New-ItemProperty -Path 'HKLM:\SOFTWARE\TightVNC\Server' -Name AllowLoopback -PropertyType DWord -Value 1 -Force | Out-Null
+          New-ItemProperty -Path 'HKLM:\SOFTWARE\TightVNC\Server' -Name RfbPort -PropertyType DWord -Value 5900 -Force | Out-Null
 
-          # نصب ابزارهای اصلی کالی در پس‌زمینه
-          docker exec cynet-kali apt-get update -y
-          docker exec cynet-kali apt-get install -y -q nmap metasploit-framework sqlmap hydra curl wget python3 git sudo zsh tmux
+          Get-Service tvnserver -ErrorAction SilentlyContinue | Stop-Service -Force -ErrorAction SilentlyContinue
+          Start-Service tvnserver
+          Start-Sleep -Seconds 5
 
-      - name: 🌐 Launch Interactive Web Terminal & Public Link
+          # Start noVNC HTTP + WebSocket proxy on localhost:6080.
+          Start-Process -FilePath python -ArgumentList '-m','websockify','6080','127.0.0.1:5900','--web','C:\noVNC' -WindowStyle Hidden
+          Start-Sleep -Seconds 5
+
+          # Verify local web endpoint.
+          $ok = $false
+          for($i=0;$i -lt 20;$i++){
+            try {
+              $r = Invoke-WebRequest -UseBasicParsing http://127.0.0.1:6080/vnc.html -TimeoutSec 5
+              if($r.StatusCode -eq 200){ $ok = $true; break }
+            } catch {}
+            Start-Sleep -Seconds 2
+          }
+          if(-not $ok){ throw 'noVNC did not start.' }
+
+      - name: Launch Cloudflare public URL
+        shell: pwsh
         run: |
-          echo "=========================================================="
-          echo "  🎉 LAUNCHING INTERACTIVE KALI WEB TERMINAL..."
-          echo "=========================================================="
-          
-          # اجرای وب ترمینال با فلگ -W برای فعال‌سازی کامل تایپ و کیبورد
-          ttyd -W -p 7681 -t fontSize=16 -t theme='{"background": "#0f172a", "foreground": "#38bdf8", "cursor": "#38bdf8"}' docker exec -it cynet-kali /bin/bash > /dev/null 2>&1 &
-          sleep 3
+          Invoke-WebRequest https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe -OutFile C:\cloudflared.exe
+          Remove-Item C:\tunnel-out.log,C:\tunnel-err.log -Force -ErrorAction SilentlyContinue
+          Start-Process -FilePath C:\cloudflared.exe -ArgumentList 'tunnel','--url','http://127.0.0.1:6080' -RedirectStandardOutput C:\tunnel-out.log -RedirectStandardError C:\tunnel-err.log -WindowStyle Hidden
 
-          # ایجاد تانل کلودفلر
-          cloudflared tunnel --url http://localhost:7681 > tunnel.log 2>&1 &
-          
-          sleep 5
-          for i in {1..20}; do
-            URL=$(grep -o 'https://[a-zA-Z0-9-]*\.trycloudflare\.com' tunnel.log | head -n 1)
-            if [ -n "$URL" ]; then
-              echo ""
-              echo "=========================================================="
-              echo "  🔥 YOUR INTERACTIVE KALI LINUX IS LIVE & READY!"
-              echo "  👉 CLICK TO OPEN IN BROWSER: $URL"
-              echo "  --------------------------------------------------------"
-              echo "  ⚡ Full Root Access | 1000 Mbps Internet | Keyboard Active"
-              echo "=========================================================="
-              echo ""
-              break
-            fi
-            sleep 2
-          done
+          $url = $null
+          for($i=0;$i -lt 30;$i++){
+            if(Test-Path C:\tunnel-out.log){
+              $m = Select-String -Path C:\tunnel-out.log,C:\tunnel-err.log -Pattern 'https://[-a-zA-Z0-9]+\.trycloudflare\.com' | Select-Object -First 1
+              if($m){ $url = $m.Matches.Value; break }
+            }
+            Start-Sleep -Seconds 2
+          }
+          if(-not $url){
+            if(Test-Path C:\tunnel-out.log){ Get-Content C:\tunnel-out.log }
+            if(Test-Path C:\tunnel-err.log){ Get-Content C:\tunnel-err.log }
+            throw 'Cloudflare URL was not created.'
+          }
 
-          tail -f tunnel.log
+          $pass = (Get-Content C:\desktop-credentials.txt | ForEach-Object { $_ -replace '^VNC_PASSWORD=' })
+          Write-Host ''
+          Write-Host '============================================================'
+          Write-Host 'WINDOWS CLOUD DESKTOP IS READY'
+          Write-Host 'Open this in your browser:'
+          Write-Host "$url/vnc.html"
+          Write-Host ''
+          Write-Host "VNC PASSWORD: $pass"
+          Write-Host '============================================================'
+          Write-Host ''
+          Write-Host 'Keep this workflow running. The desktop disappears when the job ends.'
+
+          while($true){ Start-Sleep -Seconds 300 }
